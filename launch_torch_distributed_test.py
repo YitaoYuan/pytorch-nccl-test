@@ -19,8 +19,9 @@ DISTRIBUTED_ARGS=f"--nproc_per_node {args.nproc_per_node} \
 --master_addr {args.master_addr} \
 --master_port {args.master_port}"
 
-os.environ['NCCL_IB_HCA'] = f"{args.nic}"
-print('NCCL_IB_HCA', os.environ['NCCL_IB_HCA'])
+if not args.master_addr in ["localhost", "127.0.0.1"]:
+    os.environ['NCCL_IB_HCA'] = f"{args.nic}"
+    print('NCCL_IB_HCA', os.environ['NCCL_IB_HCA'])
 
 os.system(f"python -m torch.distributed.launch {DISTRIBUTED_ARGS} \
        torch_distributed_test.py"
