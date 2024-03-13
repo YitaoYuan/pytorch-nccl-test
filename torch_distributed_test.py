@@ -20,7 +20,7 @@ def is_power_of_two(x):
 
 assert is_power_of_two(min_size) and is_power_of_two(max_size)
 
-test_op = ["allreduce", "allgather", "reducescatter"]
+test_op = ["allreduce", "allgather", "reducescatter", "reduce", "broadcast"]
 test_times = 3
 sbuf = torch.zeros(max_size//4, dtype=torch.float32).cuda()
 rbuf = torch.zeros(max_size//4, dtype=torch.float32).cuda()
@@ -42,6 +42,10 @@ def op_test(op, size):
         dist._all_gather_base(rbuf[:numel], sbuf[:numel//world_size])
     elif op == "reducescatter":
         dist._reduce_scatter_base(rbuf[:numel//world_size], sbuf[:numel])
+    elif op == "reduce":
+        dist.reduce(sbuf[:numel], dst=0)
+    elif op == "broadcast":
+        dist.broadcast(sbuf[:numel], src=0)
     end.record()
     end.synchronize()
     t = start.elapsed_time(end) * 1e-3
