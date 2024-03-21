@@ -1,0 +1,1 @@
+Tested with nvcr.io/nvidia/pytorch:23.10-py3 and pytorch 2.1
