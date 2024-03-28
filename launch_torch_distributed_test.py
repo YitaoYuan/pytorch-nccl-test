@@ -1,3 +1,6 @@
+#!/usr/bin/python3
+# encoding: utf-8
+
 # Runs the "345M" parameter model
 import argparse
 import os
