@@ -91,5 +91,5 @@ for op in test_op:
         alg_bw = test_size_gbits / avg_t
         bus_bw = coeff * alg_bw
 
-        dist_print(f"size {test_size} time {t:.6f} alg_bw {alg_bw:.3f} bus_bw {bus_bw:.3f}")
+        dist_print(f"size {test_size} time {avg_t:.6f} alg_bw {alg_bw:.3f} bus_bw {bus_bw:.3f}")
         test_size *= 2
