@@ -181,6 +181,7 @@ if world_size >= 2:
             
     print()
 
+dist.destroy_process_group()
 exit(0)
 
 for op in test_op:
@@ -220,3 +221,5 @@ for op in test_op:
         dist_print(f"size {test_size} time {avg_t:.6f} alg_bw {alg_bw:.3f} bus_bw {bus_bw:.3f}")
         dist_print(times)
         test_size *= 2
+
+dist.destroy_process_group()
