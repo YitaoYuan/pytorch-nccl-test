@@ -23,7 +23,7 @@ def is_power_of_two(x):
 
 # assert is_power_of_two(min_size) and is_power_of_two(max_size)
 
-test_op = ["allreduce", "reduce", "broadcast", "allgather", "reducescatter", "gather", "scatter", "alltoall"]
+test_op = ["allreduce", "reduce", "broadcast", "reducescatter", "allgather", "gather", "scatter", "alltoall"]
 warmup_times = 1
 test_times = 3
 sbuf = torch.zeros(max_size//4, dtype=torch.float32).cuda()
@@ -71,13 +71,15 @@ def op_test(op, size):
         dist.scatter(rbuf[:partition_numel], scatter_list, src=src)
     elif op == "alltoall":
         dist.all_to_all_single(rbuf[:numel], sbuf[:numel])
+    else:
+        raise NotImplementedError(op)
     end.record()
     end.synchronize()
     t = start.elapsed_time(end) * 1e-3
     return t
 
 szs = [256 * 1024, 8 * 1024 * 1024, 64 * 1024 * 1024, 1024 * 1024 * 1024]
-for op in ["allreduce", "reduce", "broadcast"]:
+for op in ["allreduce", "reduce", "broadcast", "reducescatter", "allgather"]:
     print(f"test {op}")
     for sz in szs:
         l = []
@@ -87,7 +89,14 @@ for op in ["allreduce", "reduce", "broadcast"]:
         bw = sz * 8 * 1e-9 / t
         dist_print(f"size {sz} time {t:.6f} alg_bw {bw:.3f}")
         dist_print(l)
-    print(sbuf[0:256]) # 4 packets
+        if op in ["allreduce", "reduce", "broadcast"]:
+            print(sbuf[0:128]) # 2 packets
+        elif op in ["reducescatter"]:
+            print(rbuf[0:128])
+        elif op in ["allgather"]:
+            for r in range(world_size):
+                offset = r * (sz // 4 // world_size)
+                print(r, rbuf[offset:offset+128])
     #print(sbuf[0:256:64])
     #print(sbuf[63:256:64])
 print()
@@ -112,7 +121,7 @@ if world_size >= 2:
 
     random.seed(0) # generate the same sequence
     eps = 1e-4
-    test_cnt = 128
+    test_cnt = 1024
     test_size = 1<<20
     ranks = [i for i in range(world_size)]
     groups = [None, dist.new_group(ranks[::2]), dist.new_group(ranks[1::2])]
@@ -128,12 +137,15 @@ if world_size >= 2:
         #     random_rank_seed = 1
         # else:
         group_id = random.randint(0, len(groups)-1)
-        op_id = random.randint(0, 2) # all_reduce, reduce and broadcast
+        op_id = random.randint(0, 4) 
         random_rank_seed = random.randint(0, 2**32-1)
         group = groups[group_id]
         if group == dist.GroupMember.NON_GROUP_MEMBER: # this process is not in group
             print(f"group {group_id}, skip")
             continue
+        rank = dist.get_rank(group)
+        part_len = test_buf_init.numel() // dist.get_world_size(group)
+        slicer = slice(part_len*rank, part_len*(rank+1))
         root_local_rank = random_rank_seed % dist.get_world_size(group)
         root_global_rank = root_local_rank if group==None else dist.get_global_rank(group, root_local_rank)
         op = test_op[op_id]
@@ -155,6 +167,15 @@ if world_size >= 2:
         elif op == "broadcast":
             dist.broadcast(test_buf, src=root_global_rank, group=group)
             std_res = test_buf_init
+        elif op == "reducescatter":
+            dist.reduce_scatter_tensor(test_buf[slicer], test_buf, group=group)
+            std_res = test_buf_init.clone()
+            std_res[slicer] = test_buf_init[slicer] * dist.get_world_size(group)
+        elif op == "allgather":
+            test_buf = torch.zeros_like(test_buf, dtype=torch.float32).cuda()
+            test_buf[slicer] = test_buf_init[slicer]
+            dist.all_gather_into_tensor(test_buf, test_buf[slicer], group=group)
+            std_res = test_buf_init
         
         abs_delta = (test_buf - std_res).abs()
         print(f", max abs delta {abs_delta.max()}", end='')
@@ -174,9 +195,10 @@ if world_size >= 2:
                     else:
                         zero_seg.append([i, i])
             print(zero_seg)
-            print(std_res)
-            print(abs_delta)
-            print(rel_delta)
+            print("result", test_buf)
+            print("std result", std_res)
+            print("abs delta", abs_delta)
+            print("rel delta", rel_delta)
             sys.exit(1)
             
     print()
