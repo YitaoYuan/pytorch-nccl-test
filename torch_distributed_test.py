@@ -5,7 +5,7 @@ import torch.distributed as dist
 import argparse
 import time
 import random
-import netccl
+# import netccl
 
 parser = argparse.ArgumentParser()
 
@@ -43,7 +43,7 @@ def op_test(op, size):
         sbuf[:numel].fill_(-1)
 
     torch.cuda.synchronize()
-    dist.barrier()
+    dist.barrier(device_ids=[torch.cuda.current_device()]) # only do barrier for current device
 
     partition_numel = numel // world_size
     start = torch.cuda.Event(enable_timing=True)
