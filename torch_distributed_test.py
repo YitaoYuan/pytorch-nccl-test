@@ -5,7 +5,8 @@ import torch.distributed as dist
 import argparse
 import time
 import random
-# import netccl
+if os.environ.get("IMPORT_NETCCL") == "1":
+    import netccl
 
 parser = argparse.ArgumentParser()
 
@@ -48,6 +49,7 @@ def op_test(op, size):
     partition_numel = numel // world_size
     start = torch.cuda.Event(enable_timing=True)
     end = torch.cuda.Event(enable_timing=True)
+    barrier_end = torch.cuda.Event(enable_timing=True)
     start.record()
     if op == "allreduce":
         dist.all_reduce(sbuf[:numel])
@@ -71,12 +73,56 @@ def op_test(op, size):
         dist.scatter(rbuf[:partition_numel], scatter_list, src=src)
     elif op == "alltoall":
         dist.all_to_all_single(rbuf[:numel], sbuf[:numel])
+    elif op == "barrier":
+        dist.barrier(device_ids=[torch.cuda.current_device()])
     else:
         raise NotImplementedError(op)
+    dist.barrier(device_ids=[torch.cuda.current_device()])
     end.record()
-    end.synchronize()
-    t = start.elapsed_time(end) * 1e-3
+    dist.barrier(device_ids=[torch.cuda.current_device()])
+    barrier_end.record()
+    barrier_end.synchronize()
+    t = (start.elapsed_time(end) - end.elapsed_time(barrier_end))* 1e-3
     return t
+
+szs = [2**s for s in range(6, 31)]
+for op in ["allreduce", "reduce", "broadcast", "reducescatter", "allgather", "barrier"]:
+    print(f"test {op}")
+    if op == "barrier":
+        l = []
+        for i in range(7):
+            t = op_test(op, 0)
+            l += [t]
+        l.sort()
+        t = l[len(l)//2]
+        dist_print(f"time {t:.6f}")
+        dist_print(l)
+    else:
+        for sz in szs:
+            l = []
+            for i in range(7):
+                t = op_test(op, sz)
+                l += [t]
+            l.sort()
+            t = l[len(l)//2]
+            bw = sz * 8 * 1e-9 / t
+            dist_print(f"size {sz} time {t:.6f} alg_bw {bw:.3f}")
+            dist_print(l)
+    #print(sbuf[0:256:64])
+    #print(sbuf[63:256:64])
+
+print()
+
+# iter = 0
+# while True:
+#     sz = 128 * 1024 * 1024
+#     t = op_test("allreduce", sz)
+#     bw = sz * 8 * 1e-9 / t
+#     if iter % 10 == 0:
+#         dist_print(f"size {sz} time {t:.6f} alg_bw {bw:.3f}")
+#     iter += 1
+
+sys.exit(0)
 
 szs = [256 * 1024, 8 * 1024 * 1024, 64 * 1024 * 1024, 1024 * 1024 * 1024]
 for op in ["allreduce", "reduce", "broadcast", "reducescatter", "allgather"]:

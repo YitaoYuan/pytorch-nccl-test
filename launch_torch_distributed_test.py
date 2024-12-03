@@ -28,6 +28,6 @@ if not args.rdzv_endpoint.startswith("localhost") and not args.rdzv_endpoint.sta
     os.environ['NCCL_IB_HCA'] = f"{args.nic}"
     print('NCCL_IB_HCA', os.environ['NCCL_IB_HCA'])
 
-cmd = f"torchrun {DISTRIBUTED_ARGS} torch_distributed_test.py"
+cmd = f"torchrun {DISTRIBUTED_ARGS} {os.path.dirname(__file__)}/torch_distributed_test.py"
 print(cmd)
 os.system(cmd)
